@@ -3,7 +3,7 @@
     "description": "",
     "dependencies": {
         "core": "*",
-        "radio": "*"
+        "funk": "*"
     },
     "files": [
         "main.blocks",
@@ -13,8 +13,12 @@
     "testFiles": [
         "test.ts"
     ],
+    "targetVersions": {
+        "target": "8.1.5",
+        "targetId": "calliopemini"
+    },
     "supportedTargets": [
         "calliopemini"
     ],
-    "preferredEditor": "blocksprj"
+    "preferredEditor": "tsprj"
 }
