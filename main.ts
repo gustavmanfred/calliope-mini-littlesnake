@@ -1,162 +1,98 @@
-// ================================================================
-// 🐍 SNAKE GAME – Calliope mini V2 (final, bug-fixed)
-// ================================================================
-// Controls:
-//   A   → Turn left
-//   B   → Turn right
-//   A+B → Restart after Game Over
-//
-// Features:
-//   - Internal direction logic (avoids runtime property reads and Error 104)
-//   - Countdown intro with tones
-//   - Eat sound and game-over melody
-//   - Gradual speed increase as score rises
-//   - Final score display and restart prompt
-//   - Stable tail movement (no flicker / false collisions)
-// ================================================================
-
-// --- GAME CONSTANTS ---
-const INITIAL_SPEED = 900   // starting delay (ms) — higher = slower
-const SPEED_STEP = 75       // ms faster per eaten mushroom
-const MIN_SPEED = 150       // fastest allowed delay
-
-// --- GAME STATE ---
-let snakeHead: game.LedSprite = null
-let snakeTail: game.LedSprite[] = []    // tail segments, each is a sprite we update in-place
-let mushroom: game.LedSprite = null
-let snakeSpeed = INITIAL_SPEED
-let gameScore = 0
-let snakeCrash = false
-let gameRunning = false
-let directionDeg = 90  // 0=up, 90=right, 180=down, 270=left
-
-// --- HELPER: delete all sprites safely ---
-function clearAllSprites(): void {
-    if (snakeHead) { snakeHead.delete(); snakeHead = null }
-    for (let s of snakeTail) s.delete()
-    snakeTail = []
-    if (mushroom) { mushroom.delete(); mushroom = null }
-}
-
-// --- PLACE A NEW MUSHROOM (not on snake) ---
-function setMushroom(): void {
-    let x = 0, y = 0, valid = false
-    while (!valid) {
-        x = randint(0, 4)
-        y = randint(0, 4)
-        valid = true
-        // avoid head
-        if (snakeHead && snakeHead.get(LedSpriteProperty.X) == x && snakeHead.get(LedSpriteProperty.Y) == y)
-            valid = false
-        // avoid any tail segment
-        for (let part of snakeTail)
-            if (part.get(LedSpriteProperty.X) == x && part.get(LedSpriteProperty.Y) == y)
-                valid = false
+// --- Compute next head position ---
+function computeNextPosition (x: number, y: number, dir: number) {
+    nx = x
+    ny = y
+    if (dir == 0) {
+        ny = y - 1
+    } else if (dir == 90) {
+        nx = x + 1
+    } else if (dir == 180) {
+        ny = y + 1
+    } else if (dir == 270) {
+        nx = x - 1
     }
-    if (mushroom) mushroom.delete()
-    mushroom = game.createSprite(x, y)
-    mushroom.set(LedSpriteProperty.Blink, 150)
-}
-
-// --- GROW SNAKE: add one tail segment at tail end position ---
-function growTailByOne(): void {
-    let nx = 0, ny = 0
-    if (snakeTail.length == 0) {
-        // if no tail, place new segment at the current head position
-        nx = snakeHead.get(LedSpriteProperty.X)
-        ny = snakeHead.get(LedSpriteProperty.Y)
-    } else {
-        // otherwise place at the last tail segment position
-        let last = snakeTail[snakeTail.length - 1]
-        nx = last.get(LedSpriteProperty.X)
-        ny = last.get(LedSpriteProperty.Y)
+    if (nx < 0) {
+        nx = 4
     }
-    snakeTail.push(game.createSprite(nx, ny))
-}
-
-// --- HANDLE EATING A MUSHROOM ---
-function eatMushroomAndGrowSnake(): void {
-    // grow tail by creating one new segment at tail end
-    growTailByOne()
-
-    // play eat sound
-    music.playTone(659, music.beat(BeatFraction.Eighth))
-
-    // update score and speed
-    gameScore += 1
-    let oldSpeed = snakeSpeed
-    snakeSpeed = Math.max(MIN_SPEED, snakeSpeed - SPEED_STEP)
-    if (snakeSpeed < oldSpeed) {
-        // short beep on speed-up
-        music.playTone(988, music.beat(BeatFraction.Sixteenth))
+    if (nx > 4) {
+        nx = 0
     }
-
-    // spawn next mushroom (safe placement)
-    setMushroom()
-}
-
-// --- COMPUTE NEXT HEAD POSITION (with wrapping) ---
-function computeNextPosition(x: number, y: number, dirDeg: number): number[] {
-    let nx = x, ny = y
-    if (dirDeg == 0) ny = y - 1
-    else if (dirDeg == 90) nx = x + 1
-    else if (dirDeg == 180) ny = y + 1
-    else if (dirDeg == 270) nx = x - 1
-
-    // wrap edges
-    if (nx < 0) nx = 4
-    if (nx > 4) nx = 0
-    if (ny < 0) ny = 4
-    if (ny > 4) ny = 0
+    if (ny < 0) {
+        ny = 4
+    }
+    if (ny > 4) {
+        ny = 0
+    }
     return [nx, ny]
 }
-
-// --- MOVE SNAKE ONE STEP (stable tail update) ---
-function moveSnake(): void {
-    if (!snakeHead) return
-
-    // previous head position
-    let prevX = snakeHead.get(LedSpriteProperty.X)
-    let prevY = snakeHead.get(LedSpriteProperty.Y)
-
-    // compute next head position
-    let [nx, ny] = computeNextPosition(prevX, prevY, directionDeg)
-
-    // --- update tail positions in-place (shift positions, no new sprites)
+// --- Eat mushroom and grow ---
+function eatMushroomAndGrowSnake () {
+    growTailByOne()
+    music.playTone(659, music.beat(BeatFraction.Eighth))
+    gameScore += 1
+    oldSpeed = snakeSpeed
+    snakeSpeed = Math.max(MIN_SPEED, snakeSpeed - SPEED_STEP)
+    if (snakeSpeed < oldSpeed) {
+        music.playTone(988, music.beat(BeatFraction.Sixteenth))
+    }
+    setMushroom()
+}
+// --- Start / Restart ---
+function startGame () {
+    clearAllSprites()
+    snakeSpeed = INITIAL_SPEED
+    gameScore = 0
+    snakeCrash = false
+    gameRunning = true
+    directionDeg = 90
+    snakeHead = game.createSprite(2, 2)
+    snakeHead.turn(Direction.Right, 90)
+    for (let j = 3; j >= 1; j--) { basic.showNumber(j); music.playTone(523, music.beat(BeatFraction.Quarter)); basic.pause(400) }
+music.playTone(784, music.beat(BeatFraction.Quarter))
+    basic.showString("GO!")
+    setMushroom()
+}
+// --- Input ---
+input.onButtonPressed(Button.A, function () {
+    if (!(gameRunning)) {
+        return
+    }
+    directionDeg = (directionDeg + 270) % 360
+    snakeHead.turn(Direction.Left, 90)
+})
+// --- Move snake one step ---
+function moveSnake () {
+    if (!(snakeHead)) {
+        return
+    }
+    prevX = snakeHead.get(LedSpriteProperty.X)
+    prevY = snakeHead.get(LedSpriteProperty.Y)
+    pos = computeNextPosition(prevX, prevY, directionDeg)
+    nx = pos[0]
+    ny = pos[1]
     if (snakeTail.length > 0) {
-        // shift from end to front
         for (let i = snakeTail.length - 1; i > 0; i--) {
-            let from = snakeTail[i - 1]
-            snakeTail[i].set(LedSpriteProperty.X, from.get(LedSpriteProperty.X))
-            snakeTail[i].set(LedSpriteProperty.Y, from.get(LedSpriteProperty.Y))
+            snakeTail[i].set(LedSpriteProperty.X, snakeTail[i - 1].get(LedSpriteProperty.X))
+            snakeTail[i].set(LedSpriteProperty.Y, snakeTail[i - 1].get(LedSpriteProperty.Y))
         }
-        // first tail segment follows previous head
-        snakeTail[0].set(LedSpriteProperty.X, prevX)
+snakeTail[0].set(LedSpriteProperty.X, prevX)
         snakeTail[0].set(LedSpriteProperty.Y, prevY)
     }
-
-    // move head to next position
     snakeHead.set(LedSpriteProperty.X, nx)
     snakeHead.set(LedSpriteProperty.Y, ny)
-
-    // --- check collision with tail (after moving head)
     for (let segment of snakeTail) {
-        if (snakeHead.get(LedSpriteProperty.X) == segment.get(LedSpriteProperty.X) &&
-            snakeHead.get(LedSpriteProperty.Y) == segment.get(LedSpriteProperty.Y)) {
+        if (snakeHead.get(LedSpriteProperty.X) == segment.get(LedSpriteProperty.X) && snakeHead.get(LedSpriteProperty.Y) == segment.get(LedSpriteProperty.Y)) {
             snakeCrash = true
-            break
+            break;
         }
     }
-
-    // check mushroom collision (eat)
-    if (mushroom && snakeHead.get(LedSpriteProperty.X) == mushroom.get(LedSpriteProperty.X) &&
-        snakeHead.get(LedSpriteProperty.Y) == mushroom.get(LedSpriteProperty.Y)) {
-        // delete mushroom first to avoid double-detection
-        if (mushroom) { mushroom.delete(); mushroom = null }
-        eatMushroomAndGrowSnake()
+    if (mushroom) {
+        if (snakeHead.get(LedSpriteProperty.X) == mushroom.get(LedSpriteProperty.X) && snakeHead.get(LedSpriteProperty.Y) == mushroom.get(LedSpriteProperty.Y)) {
+            mushroom.delete()
+            mushroom = null
+eatMushroomAndGrowSnake()
+        }
     }
-
-    // handle crash/game over
     if (snakeCrash) {
         gameRunning = false
         music.startMelody(music.builtInMelody(Melodies.PowerDown), MelodyOptions.Once)
@@ -169,54 +105,105 @@ function moveSnake(): void {
         basic.showString("A+B = RESTART")
     }
 }
-
-// --- INPUT: turn left/right and restart ---
-input.onButtonPressed(Button.A, function () {
-    if (!gameRunning) return
-    directionDeg = (directionDeg + 270) % 360  // left
-    // keep visual sprite rotation for clarity
-    snakeHead.turn(Direction.Left, 90)
+input.onButtonPressed(Button.AB, function () {
+    if (!(gameRunning)) {
+        startGame()
+    }
 })
 input.onButtonPressed(Button.B, function () {
-    if (!gameRunning) return
-    directionDeg = (directionDeg + 90) % 360   // right
-    snakeHead.turn(Direction.Right, 90)
-})
-input.onButtonPressed(Button.AB, function () {
-    if (!gameRunning) startGame()
-})
-
-// --- START / RESTART GAME ---
-function startGame(): void {
-    // remove old sprites
-    clearAllSprites()
-
-    // reset state
-    snakeSpeed = INITIAL_SPEED
-    gameScore = 0
-    snakeCrash = false
-    gameRunning = true
-    directionDeg = 90  // start facing right
-
-    // create head
-    snakeHead = game.createSprite(2, 2)
-    // ensure sprite visually faces right once
-    snakeHead.turn(Direction.Right, 90)
-
-    // small countdown intro with tones
-    for (let i = 3; i >= 1; i--) {
-        basic.showNumber(i)
-        music.playTone(523, music.beat(BeatFraction.Quarter))
-        basic.pause(200)
+    if (!(gameRunning)) {
+        return
     }
-    music.playTone(784, music.beat(BeatFraction.Quarter))
-    basic.showString("GO!")
-
-    // spawn first mushroom
-    setMushroom()
+    directionDeg = (directionDeg + 90) % 360
+    snakeHead.turn(Direction.Right, 90)
+})
+// --- Add one tail segment ---
+function growTailByOne () {
+    if (snakeTail.length == 0) {
+        nx = snakeHead.get(LedSpriteProperty.X)
+        ny = snakeHead.get(LedSpriteProperty.Y)
+    } else {
+        nx = snakeTail[snakeTail.length - 1].get(LedSpriteProperty.X)
+        ny = snakeTail[snakeTail.length - 1].get(LedSpriteProperty.Y)
+    }
+    snakeTail.push(game.createSprite(nx, ny))
 }
-
-// --- MAIN LOOP ---
+// --- Place a new mushroom (not on snake) ---
+function setMushroom () {
+    valid = false
+    while (!(valid)) {
+        nx = randint(0, 4)
+        ny = randint(0, 4)
+        valid = true
+        if (snakeHead && snakeHead.get(LedSpriteProperty.X) == nx && snakeHead.get(LedSpriteProperty.Y) == ny) {
+            valid = false
+        }
+        for (let part of snakeTail) {
+            if (part.get(LedSpriteProperty.X) == nx && part.get(LedSpriteProperty.Y) == ny) {
+                valid = false
+                break;
+            }
+        }
+    }
+    if (mushroom) {
+        mushroom.delete()
+    }
+    mushroom = game.createSprite(nx, ny)
+    mushroom.set(LedSpriteProperty.Blink, 150)
+}
+// --- Helper: delete all sprites safely ---
+function clearAllSprites () {
+    if (snakeHead) {
+        snakeHead.delete()
+        snakeHead = null
+    }
+    for (let s of snakeTail) {
+        s.delete()
+    }
+    snakeTail = []
+    if (mushroom) {
+        mushroom.delete()
+        mushroom = null
+    }
+}
+/**
+ * ---------------------------------------------------------
+ * 
+ * SNAKE GAME – Calliope mini V2 (blockeditor-ready)
+ * 
+ * ---------------------------------------------------------
+ */
+/**
+ * temporäre Variablen (für Blockeditor sauber)
+ */
+let valid = false
+let pos: number[] = []
+let prevY = 0
+let prevX = 0
+let gameRunning = false
+let snakeCrash = false
+let oldSpeed = 0
+let gameScore = 0
+let ny = 0
+let nx = 0
+let directionDeg = 0
+let snakeSpeed = 0
+let MIN_SPEED = 0
+let SPEED_STEP = 0
+let INITIAL_SPEED = 0
+let mushroom: game.LedSprite = null
+let snakeTail: game.LedSprite[] = []
+// --- Game state (globale Variablen) ---
+let snakeHead: game.LedSprite = null
+// --- Game constants ---
+INITIAL_SPEED = 900
+SPEED_STEP = 75
+MIN_SPEED = 150
+snakeSpeed = INITIAL_SPEED
+directionDeg = 90
+// --- Auto-start ---
+startGame()
+// --- Main loop ---
 basic.forever(function () {
     if (gameRunning) {
         moveSnake()
@@ -225,6 +212,3 @@ basic.forever(function () {
         basic.pause(100)
     }
 })
-
-// auto-start on boot
-startGame()
